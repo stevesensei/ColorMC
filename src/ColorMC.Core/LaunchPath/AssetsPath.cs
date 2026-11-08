@@ -10,39 +10,47 @@ namespace ColorMC.Core.LaunchPath;
 /// </summary>
 public static class AssetsPath
 {
+    private static Paths s_default;
+    private static Paths Current => MinecraftPath.Resources?.Assets ?? s_default;
+
     /// <summary>
     /// 基础路径
     /// </summary>
-    public static string BaseDir { get; private set; }
+    public static string BaseDir => Current.BaseDir;
 
     /// <summary>
     /// 资源文件路径
     /// </summary>
-    public static string ObjectsDir { get; private set; }
+    public static string ObjectsDir => Current.ObjectsDir;
     /// <summary>
     /// 索引文件路径
     /// </summary>
-    public static string IndexDir { get; private set; }
+    public static string IndexDir => Current.IndexDir;
     /// <summary>
     /// 皮肤文件路径
     /// </summary>
-    public static string SkinDir { get; private set; }
+    public static string SkinDir => Current.SkinDir;
 
     /// <summary>
     /// 初始化
     /// </summary>
     /// <param name="dir">运行目录</param>
-    public static void Init(string dir)
-    {
-        BaseDir = Path.Combine(dir, Names.NameGameAssetsDir);
-        IndexDir = Path.Combine(BaseDir, Names.NameGameIndexDir);
-        ObjectsDir = Path.Combine(BaseDir, Names.NameGameObjectDir);
-        SkinDir = Path.Combine(BaseDir, Names.NameGameSkinDir);
+    public static void Init(string dir) => s_default = new Paths(dir);
 
-        Directory.CreateDirectory(BaseDir);
-        Directory.CreateDirectory(IndexDir);
-        Directory.CreateDirectory(ObjectsDir);
-        Directory.CreateDirectory(SkinDir);
+    internal sealed class Paths
+    {
+        internal string BaseDir { get; }
+        internal string ObjectsDir { get; }
+        internal string IndexDir { get; }
+        internal string SkinDir { get; }
+
+        internal Paths(string directory)
+        {
+            BaseDir = Path.Combine(directory, Names.NameGameAssetsDir);
+            IndexDir = Directory.CreateDirectory(Path.Combine(BaseDir, Names.NameGameIndexDir)).FullName;
+            ObjectsDir = Directory.CreateDirectory(Path.Combine(BaseDir, Names.NameGameObjectDir)).FullName;
+            SkinDir = Directory.CreateDirectory(Path.Combine(BaseDir, Names.NameGameSkinDir)).FullName;
+        }
     }
 
     /// <summary>

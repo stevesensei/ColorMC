@@ -206,7 +206,9 @@ public static class DownloadManager
     private static void Close()
     {
         s_stop = true;
-        s_tasks.Clear();
+        s_download.Clear();
+        foreach (var task in s_tasks.ToArray())
+            task.Cancel();
         s_threads.ForEach(a => a.Close());
     }
 

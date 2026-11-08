@@ -639,8 +639,11 @@ public static class GameDownloadHelper
     /// <returns>下载项目列表</returns>
     public static Task<ForgeGetFilesRes?> BuildForgeAsync(this GameSettingObj obj)
     {
-        return BuildForgeAsync(obj.Version, obj.LoaderVersion!, obj.Loader == Loaders.NeoForge);
+        return obj.BuildForgeAsync(CancellationToken.None);
     }
+
+    public static Task<ForgeGetFilesRes?> BuildForgeAsync(this GameSettingObj obj, CancellationToken token) =>
+        BuildForgeAsync(obj.Version, obj.LoaderVersion!, obj.Loader == Loaders.NeoForge, token);
 
     /// <summary>
     /// 获取Forge下载项目
@@ -649,7 +652,8 @@ public static class GameDownloadHelper
     /// <param name="version">forge版本</param>
     /// <param name="neo">是否为NeoForge</param>
     /// <returns>下载项目列表</returns>
-    private static async Task<ForgeGetFilesRes?> BuildForgeAsync(string mc, string version, bool neo)
+    private static async Task<ForgeGetFilesRes?> BuildForgeAsync(string mc, string version, bool neo,
+        CancellationToken token)
     {
         var version1 = VersionPath.GetVersion(mc)!;
         var v2 = version1.IsGameVersionV2();
@@ -657,9 +661,10 @@ public static class GameDownloadHelper
         var down = neo ?
             BuildNeoForgeInstaller(mc, version) :
             BuildForgeInstaller(mc, version);
-        var res = await DownloadManager.StartAsync([down]);
+        var res = await DownloadManager.StartAsync([down], token: token);
         if (!res)
         {
+            token.ThrowIfCancellationRequested();
             return null;
         }
 
@@ -686,7 +691,7 @@ public static class GameDownloadHelper
         {
             var stream = versionfile.OpenEntryStream();
             var mem = new MemoryStream();
-            await stream.CopyToAsync(mem);
+            await stream.CopyToAsync(mem, token);
             mem.Seek(0, SeekOrigin.Begin);
             var info = JsonUtils.ToObj(mem, JsonType.ForgeLaunchObj);
             if (info == null)
@@ -694,6 +699,7 @@ public static class GameDownloadHelper
                 return null;
             }
             mem.Seek(0, SeekOrigin.Begin);
+            token.ThrowIfCancellationRequested();
             VersionPath.AddGame(info, mem, mc, version, neo);
             stream.Dispose();
             mem.Dispose();
@@ -702,7 +708,7 @@ public static class GameDownloadHelper
 
             stream = installfile.OpenEntryStream();
             mem = new MemoryStream();
-            await stream.CopyToAsync(mem);
+            await stream.CopyToAsync(mem, token);
             mem.Seek(0, SeekOrigin.Begin);
             var info1 = JsonUtils.ToObj(mem, JsonType.ForgeInstallObj);
             if (info1 == null)
@@ -710,6 +716,7 @@ public static class GameDownloadHelper
                 return null;
             }
             mem.Seek(0, SeekOrigin.Begin);
+            token.ThrowIfCancellationRequested();
             VersionPath.AddGame(info1, mem, mc, version, neo);
             stream.Dispose();
             mem.Dispose();
@@ -768,6 +775,7 @@ public static class GameDownloadHelper
             using var mem = new MemoryStream();
             JsonUtils.ToString(mem, info, JsonType.ForgeLaunchObj);
             mem.Seek(0, SeekOrigin.Begin);
+            token.ThrowIfCancellationRequested();
             VersionPath.AddGame(info, mem, mc, version, neo);
 
             return new ForgeGetFilesRes()
@@ -784,8 +792,11 @@ public static class GameDownloadHelper
     /// <returns>下载项目列表</returns>
     public static Task<List<FileItemObj>?> BuildFabricAsync(this GameSettingObj obj)
     {
-        return BuildFabricAsync(obj.Version, obj.LoaderVersion!);
+        return obj.BuildFabricAsync(CancellationToken.None);
     }
+
+    public static Task<List<FileItemObj>?> BuildFabricAsync(this GameSettingObj obj, CancellationToken token) =>
+        BuildFabricAsync(obj.Version, obj.LoaderVersion!, token);
 
     /// <summary>
     /// 获取Fabric下载项目
@@ -793,10 +804,10 @@ public static class GameDownloadHelper
     /// <param name="mc">游戏版本</param>
     /// <param name="version">fabric版本</param>
     /// <returns>下载项目列表</returns>
-    private static async Task<List<FileItemObj>?> BuildFabricAsync(string mc, string version)
+    private static async Task<List<FileItemObj>?> BuildFabricAsync(string mc, string version, CancellationToken token)
     {
         var list = new List<FileItemObj>();
-        var meta = await FabricAPI.GetMetaAsync(CoreHttpClient.Source);
+        var meta = await FabricAPI.GetMetaAsync(CoreHttpClient.Source, token);
         if (meta == null)
         {
             return null;
@@ -819,12 +830,13 @@ public static class GameDownloadHelper
 
         version = fabric.Version;
 
-        using var data = await FabricAPI.GetLoaderAsync(mc, version, CoreHttpClient.Source);
+        using var data = await FabricAPI.GetLoaderAsync(mc, version, CoreHttpClient.Source, token);
         if (data == null || data.Meta == null)
         {
             return null;
         }
 
+        token.ThrowIfCancellationRequested();
         VersionPath.AddGame(data.Meta, data.Text, mc, version);
 
         foreach (var item in data.Meta.Libraries)
@@ -912,8 +924,11 @@ public static class GameDownloadHelper
     /// <returns>下载项目列表</returns>
     public static Task<List<FileItemObj>?> BuildOptifineAsync(this GameSettingObj obj)
     {
-        return BuildOptifineAsync(obj.Version, obj.LoaderVersion!);
+        return obj.BuildOptifineAsync(CancellationToken.None);
     }
+
+    public static Task<List<FileItemObj>?> BuildOptifineAsync(this GameSettingObj obj, CancellationToken token) =>
+        BuildOptifineAsync(obj.Version, obj.LoaderVersion!, token);
 
     /// <summary>
     /// 创建optifine下载项目
@@ -921,9 +936,9 @@ public static class GameDownloadHelper
     /// <param name="mc">游戏版本</param>
     /// <param name="version">optifine版本</param>
     /// <returns>下载项目列表</returns>
-    private static async Task<List<FileItemObj>?> BuildOptifineAsync(string mc, string version)
+    private static async Task<List<FileItemObj>?> BuildOptifineAsync(string mc, string version, CancellationToken token)
     {
-        var list = await OptifineAPI.GetOptifineVersionAsync();
+        var list = await OptifineAPI.GetOptifineVersionAsync(token);
         if (list == null)
         {
             return null;
@@ -935,9 +950,10 @@ public static class GameDownloadHelper
             {
                 if (item.Local == SourceLocal.Offical)
                 {
-                    await OptifineAPI.GetOptifineDownloadUrlAsync(item);
+                    await OptifineAPI.GetOptifineDownloadUrlAsync(item, token);
                 }
 
+                token.ThrowIfCancellationRequested();
                 VersionPath.AddOptifine(item);
 
                 if (item.Url1 == null)

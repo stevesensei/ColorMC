@@ -19,15 +19,19 @@ public static class FabricAPI
     /// 获取元数据
     /// </summary>
     public static async Task<FabricMetaObj?> GetMetaAsync(SourceLocal? source = null)
+        => await GetMetaAsync(source, CancellationToken.None);
+
+    public static async Task<FabricMetaObj?> GetMetaAsync(SourceLocal? source, CancellationToken token)
     {
         source ??= CoreHttpClient.Source;
 
         string url = UrlHelper.GetFabricMeta(source);
         try
         {
-            using var stream = await CoreHttpClient.GetStreamAsync(url);
+            using var stream = await CoreHttpClient.GetStreamAsync(url, token);
             return JsonUtils.ToObj(stream, JsonType.FabricMetaObj);
         }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (Exception e)
         {
             ColorMCCore.OnError(new ApiRequestErrorEventArgs(url, e));
@@ -41,19 +45,23 @@ public static class FabricAPI
     /// <param name="mc">游戏版本</param>
     /// <param name="version">fabric版本</param>
     public static async Task<GetFabricLoaderRes?> GetLoaderAsync(string mc, string version, SourceLocal? source = null)
+        => await GetLoaderAsync(mc, version, source, CancellationToken.None);
+
+    public static async Task<GetFabricLoaderRes?> GetLoaderAsync(string mc, string version, SourceLocal? source,
+        CancellationToken token)
     {
         source ??= CoreHttpClient.Source;
 
         string url = $"{UrlHelper.GetFabricMeta(source)}/loader/{mc}/{version}/profile/json";
         try
         {
-            using var stream = await CoreHttpClient.GetStreamAsync(url);
+            using var stream = await CoreHttpClient.GetStreamAsync(url, token);
             if (stream == null)
             {
                 return null;
             }
             var mem = new MemoryStream();
-            await stream.CopyToAsync(mem);
+            await stream.CopyToAsync(mem, token);
             mem.Seek(0, SeekOrigin.Begin);
             var meta = JsonUtils.ToObj(mem, JsonType.FabricLoaderObj);
             mem.Seek(0, SeekOrigin.Begin);
@@ -63,6 +71,7 @@ public static class FabricAPI
                 Text = mem
             };
         }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (Exception e)
         {
             ColorMCCore.OnError(new ApiRequestErrorEventArgs(url, e));

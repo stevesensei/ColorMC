@@ -22,12 +22,15 @@ public static class OptifineAPI
     /// 获取高清修复版本
     /// </summary>
     public static async Task<List<OptifineObj>?> GetOptifineVersionAsync()
+        => await GetOptifineVersionAsync(CancellationToken.None);
+
+    public static async Task<List<OptifineObj>?> GetOptifineVersionAsync(CancellationToken token)
     {
         string url = UrlHelper.GetOptifine(CoreHttpClient.Source);
         try
         {
             var list = new List<OptifineObj>();
-            using var stream = await CoreHttpClient.GetStreamAsync(url);
+            using var stream = await CoreHttpClient.GetStreamAsync(url, token);
             if (stream == null)
             {
                 return null;
@@ -114,6 +117,7 @@ public static class OptifineAPI
 
             return list;
         }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (Exception e)
         {
             ColorMCCore.OnError(new ApiRequestErrorEventArgs(url, e));
@@ -127,18 +131,22 @@ public static class OptifineAPI
     /// <param name="obj">高清修复信息</param>
     /// <returns>下载地址</returns>
     public static async Task<string?> GetOptifineDownloadUrlAsync(OptifineObj obj)
+        => await GetOptifineDownloadUrlAsync(obj, CancellationToken.None);
+
+    public static async Task<string?> GetOptifineDownloadUrlAsync(OptifineObj obj, CancellationToken token)
     {
         try
         {
-            await CoreHttpClient.GetStringAsync(obj.Url1);
+            await CoreHttpClient.GetStringAsync(obj.Url1, token);
         }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (Exception e)
         {
             ColorMCCore.OnError(new ApiRequestErrorEventArgs(obj.Url1, e));
         }
         try
         {
-            var data = await CoreHttpClient.GetStringAsync(obj.Url2);
+            var data = await CoreHttpClient.GetStringAsync(obj.Url2, token);
             if (data == null)
             {
                 return null;
@@ -152,6 +160,7 @@ public static class OptifineAPI
             obj.Url2 = "";
             obj.Local = SourceLocal.BMCLAPI;
         }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (Exception e)
         {
             ColorMCCore.OnError(new ApiRequestErrorEventArgs(obj.Url2, e));

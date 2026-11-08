@@ -27,16 +27,17 @@ internal class DownloadTask(IDownloadGui? gui, IProgressGui? pgui, CancellationT
     /// <summary>
     /// 已下载数量
     /// </summary>
-    private int _doneSize = 0;
+    private int _doneSize;
     /// <summary>
     /// 下次错误数量
     /// </summary>
     private int _errorSize;
 
     /// <summary>
-    /// 处理完成信号量
+    /// 处理完成信号
     /// </summary>
-    private readonly Semaphore _semaphore = new(0, 2);
+    private readonly TaskCompletionSource<bool> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private int _completed;
 
     /// <summary>
     /// 设置任务数量
@@ -53,17 +54,13 @@ internal class DownloadTask(IDownloadGui? gui, IProgressGui? pgui, CancellationT
     /// <returns>是否成功下载</returns>
     public Task<bool> WaitDone()
     {
-        return Task.Run(() =>
-        {
-            _semaphore.WaitOne();
-
-            if (_cancel.IsCancellationRequested)
-            {
-                return false;
-            }
-
-            return _errorSize == 0;
-        }, Token);
+        if (_allSize == 0)
+            Complete(false);
+        else if (Token.IsCancellationRequested)
+            Complete(false);
+        else
+            Token.Register(static state => ((DownloadTask)state!).Complete(false), this);
+        return _completion.Task;
     }
 
     /// <summary>
@@ -72,9 +69,7 @@ internal class DownloadTask(IDownloadGui? gui, IProgressGui? pgui, CancellationT
     public void Cancel()
     {
         _cancel.Cancel();
-        _semaphore.Release();
-
-        DownloadManager.TaskDone(gui, this);
+        Complete(false);
     }
 
     /// <summary>
@@ -82,7 +77,7 @@ internal class DownloadTask(IDownloadGui? gui, IProgressGui? pgui, CancellationT
     /// </summary>
     public void Done()
     {
-        _doneSize++;
+        Interlocked.Increment(ref _doneSize);
         gui?.UpdateTask(UpdateType.ItemDone, 1);
         pgui?.SetNowProcess(_doneSize + _errorSize, _allSize);
 
@@ -94,7 +89,7 @@ internal class DownloadTask(IDownloadGui? gui, IProgressGui? pgui, CancellationT
     /// </summary>
     public void Error()
     {
-        _errorSize++;
+        Interlocked.Increment(ref _errorSize);
         gui?.UpdateTask(UpdateType.ItemDone, 1);
         pgui?.SetNowProcess(_doneSize + _errorSize, _allSize);
 
@@ -106,12 +101,16 @@ internal class DownloadTask(IDownloadGui? gui, IProgressGui? pgui, CancellationT
     /// </summary>
     private void ItemDone()
     {
-        if (_doneSize + _errorSize >= _allSize)
-        {
-            //任务结束
-            _semaphore.Release();
-            DownloadManager.TaskDone(gui, this);
-        }
+        if (Volatile.Read(ref _doneSize) + Volatile.Read(ref _errorSize) >= _allSize)
+            Complete(Volatile.Read(ref _errorSize) == 0);
+    }
+
+    private void Complete(bool succeeded)
+    {
+        if (Interlocked.Exchange(ref _completed, 1) != 0)
+            return;
+        _completion.TrySetResult(succeeded && !Token.IsCancellationRequested);
+        DownloadManager.TaskDone(gui, this);
     }
 
     /// <summary>

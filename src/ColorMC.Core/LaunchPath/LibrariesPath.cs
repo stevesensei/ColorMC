@@ -9,26 +9,35 @@ namespace ColorMC.Core.LaunchPath;
 /// </summary>
 public static class LibrariesPath
 {
+    private static Paths s_default;
+    private static Paths Current => MinecraftPath.Resources?.Libraries ?? s_default;
+
     /// <summary>
     /// 运行库路径
     /// </summary>
-    public static string BaseDir { get; private set; }
+    public static string BaseDir => Current.BaseDir;
     /// <summary>
     /// 本机二进制路径
     /// </summary>
-    public static string NativeDir { get; private set; }
+    public static string NativeDir => Current.NativeDir;
 
     /// <summary>
     /// 初始化
     /// </summary>
     /// <param name="dir">运行路径</param>
-    public static void Init(string dir)
-    {
-        BaseDir = Path.Combine(dir, Names.NameLibDir);
-        NativeDir = Path.Combine(BaseDir, $"native-{SystemInfo.Os}-{SystemInfo.SystemArch}".ToLower());
+    public static void Init(string dir) => s_default = new Paths(dir);
 
-        Directory.CreateDirectory(BaseDir);
-        Directory.CreateDirectory(NativeDir);
+    internal sealed class Paths
+    {
+        internal string BaseDir { get; }
+        internal string NativeDir { get; }
+
+        internal Paths(string directory)
+        {
+            BaseDir = Path.Combine(directory, Names.NameLibDir);
+            NativeDir = Path.Combine(BaseDir, $"native-{SystemInfo.Os}-{SystemInfo.SystemArch}".ToLower());
+            Directory.CreateDirectory(NativeDir);
+        }
     }
 
     /// <summary>

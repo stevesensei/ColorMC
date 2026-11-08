@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using ColorMC.Core.Config;
 using ColorMC.Core.Helpers;
 using ColorMC.Core.Net;
@@ -15,32 +16,23 @@ namespace ColorMC.Core.LaunchPath;
 /// </summary>
 public static class VersionPath
 {
-    //版本缓存
-    private static readonly Dictionary<string, GameArgObj> s_gameArgs = [];
-    private static readonly Dictionary<string, ForgeInstallObj> s_forgeInstalls = [];
-    private static readonly Dictionary<string, ForgeInstallObj> s_neoForgeInstalls = [];
-    private static readonly Dictionary<string, ForgeLaunchObj> s_forgeLaunchs = [];
-    private static readonly Dictionary<string, ForgeLaunchObj> s_neoForgeLaunchs = [];
-    private static readonly Dictionary<string, FabricLoaderObj> s_fabricLoaders = [];
-    private static readonly Dictionary<string, QuiltLoaderObj> s_quiltLoaders = [];
-    private static readonly Dictionary<Guid, CustomLoaderObj> s_customLoader = [];
-    private static readonly Dictionary<string, OptifineObj> s_optifineLoader = [];
-
-    private static VersionObj? _version;
-    private static string s_optifineFile;
+    private static readonly ConcurrentDictionary<string, Cache> s_caches = new(
+        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+    private static Cache s_default = null!;
+    private static Cache Current => MinecraftPath.Resources?.Versions ?? s_default;
 
     /// <summary>
     /// 版本缓存路径
     /// </summary>
-    public static string BaseDir { get; private set; }
+    public static string BaseDir => Current.BaseDir;
 
     //加载器缓存路径
-    public static string ForgeDir { get; private set; }
-    public static string FabricDir { get; private set; }
-    public static string QuiltDir { get; private set; }
-    public static string NeoForgeDir { get; private set; }
+    public static string ForgeDir => Current.ForgeDir;
+    public static string FabricDir => Current.FabricDir;
+    public static string QuiltDir => Current.QuiltDir;
+    public static string NeoForgeDir => Current.NeoForgeDir;
 
-    public static VersionObj? Version => _version;
+    public static VersionObj? Version => Current.Version;
 
     /// <summary>
     /// 获取游戏版本列表
@@ -48,60 +40,61 @@ public static class VersionPath
     /// <returns></returns>
     public static async Task<VersionObj?> GetVersionsAsync()
     {
-        if (_version == null)
+        if (Current.Version == null)
         {
             await ReadVersionsAsync();
         }
-        return _version;
+        return Current.Version;
     }
 
     /// <summary>
     /// 初始化
     /// </summary>
     /// <param name="dir">运行的路径</param>
-    public static void Init(string dir)
+    public static void Init(string dir) => s_default = GetCache(dir);
+
+    internal static Cache GetCache(string directory) =>
+        s_caches.GetOrAdd(Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory)), static path => new Cache(path));
+
+    internal sealed class Cache
     {
-        BaseDir = Path.Combine(dir, Names.NameVersionDir);
-        ForgeDir = Path.Combine(BaseDir, Names.NameForgeKey);
-        NeoForgeDir = Path.Combine(BaseDir, Names.NameNeoForgedKey);
-        FabricDir = Path.Combine(BaseDir, Names.NameFabricKey);
-        QuiltDir = Path.Combine(BaseDir, Names.NameQuiltKey);
+        internal readonly Dictionary<string, GameArgObj> GameArgs = [];
+        internal readonly Dictionary<string, ForgeInstallObj> ForgeInstalls = [];
+        internal readonly Dictionary<string, ForgeInstallObj> NeoForgeInstalls = [];
+        internal readonly Dictionary<string, ForgeLaunchObj> ForgeLaunches = [];
+        internal readonly Dictionary<string, ForgeLaunchObj> NeoForgeLaunches = [];
+        internal readonly Dictionary<string, FabricLoaderObj> FabricLoaders = [];
+        internal readonly Dictionary<string, QuiltLoaderObj> QuiltLoaders = [];
+        internal readonly Dictionary<Guid, CustomLoaderObj> CustomLoaders = [];
+        internal readonly Dictionary<string, OptifineObj> OptifineLoaders = [];
+        internal VersionObj? Version;
 
-        Directory.CreateDirectory(BaseDir);
+        internal string BaseDir { get; }
+        internal string ForgeDir { get; }
+        internal string FabricDir { get; }
+        internal string QuiltDir { get; }
+        internal string NeoForgeDir { get; }
+        internal string OptifineFile { get; }
 
-        Directory.CreateDirectory(ForgeDir);
-        Directory.CreateDirectory(NeoForgeDir);
-        Directory.CreateDirectory(FabricDir);
-        Directory.CreateDirectory(QuiltDir);
-
-        s_optifineFile = Path.Combine(BaseDir, Names.NameOptifineFile);
-
-        LoadOptifine();
-    }
-
-    /// <summary>
-    /// 读取高清修复信息
-    /// </summary>
-    private static void LoadOptifine()
-    {
-        if (File.Exists(s_optifineFile))
+        internal Cache(string directory)
         {
-            s_optifineLoader.Clear();
+            BaseDir = Path.Combine(directory, Names.NameVersionDir);
+            ForgeDir = Directory.CreateDirectory(Path.Combine(BaseDir, Names.NameForgeKey)).FullName;
+            NeoForgeDir = Directory.CreateDirectory(Path.Combine(BaseDir, Names.NameNeoForgedKey)).FullName;
+            FabricDir = Directory.CreateDirectory(Path.Combine(BaseDir, Names.NameFabricKey)).FullName;
+            QuiltDir = Directory.CreateDirectory(Path.Combine(BaseDir, Names.NameQuiltKey)).FullName;
+            OptifineFile = Path.Combine(BaseDir, Names.NameOptifineFile);
+
+            if (!File.Exists(OptifineFile))
+                return;
+
             try
             {
-                using var stream = PathHelper.OpenRead(s_optifineFile);
-                var obj = JsonUtils.ToObj(stream, JsonType.DictionaryStringOptifineObj);
-                if (obj != null)
-                {
-                    foreach (var item in obj)
-                    {
-                        s_optifineLoader.Add(item.Key, item.Value);
-                    }
-                }
+                using var stream = PathHelper.OpenRead(OptifineFile);
+                OptifineLoaders = JsonUtils.ToObj(stream, JsonType.DictionaryStringOptifineObj) ?? [];
             }
             catch
             {
-
             }
         }
     }
@@ -111,7 +104,8 @@ public static class VersionPath
     /// </summary>
     private static void SaveOptifine()
     {
-        ConfigSave.AddItem(ConfigSaveObj.Build(Names.NameOptifineFile, s_optifineFile, s_optifineLoader, JsonType.DictionaryStringOptifineObj));
+        var file = Current.OptifineFile;
+        ConfigSave.AddItem(ConfigSaveObj.Build(file, file, Current.OptifineLoaders, JsonType.DictionaryStringOptifineObj));
     }
 
     /// <summary>
@@ -123,14 +117,14 @@ public static class VersionPath
         using var res = await GameAPI.GetVersionsAsync();
         if (res != null && res.Version != null)
         {
-            _version = res.Version;
+            Current.Version = res.Version;
             SaveVersions(res.Text);
             return;
         }
         using var res1 = await GameAPI.GetVersionsAsync(SourceLocal.Offical);
         if (res1 != null && res1.Version != null)
         {
-            _version = res1.Version;
+            Current.Version = res1.Version;
             SaveVersions(res1.Text);
             return;
         }
@@ -156,7 +150,7 @@ public static class VersionPath
         if (File.Exists(file))
         {
             using var stream = PathHelper.OpenRead(file);
-            _version = JsonUtils.ToObj(stream, JsonType.VersionObj);
+            Current.Version = JsonUtils.ToObj(stream, JsonType.VersionObj);
         }
         else
         {
@@ -201,9 +195,9 @@ public static class VersionPath
         PathHelper.WriteBytes(Path.Combine(FabricDir, $"{obj.Id}.json"), array);
 
         var key = $"{mc}-{version}";
-        if (!s_fabricLoaders.TryAdd(key, obj))
+        if (!Current.FabricLoaders.TryAdd(key, obj))
         {
-            s_fabricLoaders[key] = obj;
+            Current.FabricLoaders[key] = obj;
         }
     }
 
@@ -232,16 +226,16 @@ public static class VersionPath
         var key = $"{mc}-{version}";
         if (neo)
         {
-            if (!s_neoForgeLaunchs.TryAdd(key, obj))
+            if (!Current.NeoForgeLaunches.TryAdd(key, obj))
             {
-                s_neoForgeLaunchs[key] = obj;
+                Current.NeoForgeLaunches[key] = obj;
             }
         }
         else
         {
-            if (!s_forgeLaunchs.TryAdd(key, obj))
+            if (!Current.ForgeLaunches.TryAdd(key, obj))
             {
-                s_forgeLaunchs[key] = obj;
+                Current.ForgeLaunches[key] = obj;
             }
         }
     }
@@ -272,16 +266,16 @@ public static class VersionPath
         var key = $"{mc}-{version}";
         if (neo)
         {
-            if (!s_neoForgeInstalls.TryAdd(key, obj))
+            if (!Current.NeoForgeInstalls.TryAdd(key, obj))
             {
-                s_neoForgeInstalls[key] = obj;
+                Current.NeoForgeInstalls[key] = obj;
             }
         }
         else
         {
-            if (!s_forgeInstalls.TryAdd(key, obj))
+            if (!Current.ForgeInstalls.TryAdd(key, obj))
             {
-                s_forgeInstalls[key] = obj;
+                Current.ForgeInstalls[key] = obj;
             }
         }
     }
@@ -298,9 +292,9 @@ public static class VersionPath
         PathHelper.WriteBytes(Path.Combine(QuiltDir, $"{obj.Id}.json"), data);
 
         var key = $"{mc}-{version}";
-        if (!s_quiltLoaders.TryAdd(key, obj))
+        if (!Current.QuiltLoaders.TryAdd(key, obj))
         {
-            s_quiltLoaders[key] = obj;
+            Current.QuiltLoaders[key] = obj;
         }
     }
 
@@ -311,9 +305,9 @@ public static class VersionPath
     /// <param name="uuid"></param>
     public static void AddGame(CustomLoaderObj obj, Guid uuid)
     {
-        if (!s_customLoader.TryAdd(uuid, obj))
+        if (!Current.CustomLoaders.TryAdd(uuid, obj))
         {
-            s_customLoader[uuid] = obj;
+            Current.CustomLoaders[uuid] = obj;
         }
     }
 
@@ -323,9 +317,9 @@ public static class VersionPath
     /// <param name="obj">高清修复信息</param>
     public static void AddOptifine(OptifineObj obj)
     {
-        if (!s_optifineLoader.TryAdd(obj.Version, obj))
+        if (!Current.OptifineLoaders.TryAdd(obj.Version, obj))
         {
-            s_optifineLoader[obj.Version] = obj;
+            Current.OptifineLoaders[obj.Version] = obj;
         }
         SaveOptifine();
     }
@@ -337,7 +331,7 @@ public static class VersionPath
     /// <returns>游戏数据</returns>
     public static GameArgObj? GetVersion(string version)
     {
-        if (s_gameArgs.TryGetValue(version, out var temp))
+        if (Current.GameArgs.TryGetValue(version, out var temp))
         {
             return temp;
         }
@@ -354,7 +348,7 @@ public static class VersionPath
         {
             return null;
         }
-        s_gameArgs.Add(version, obj);
+        Current.GameArgs.Add(version, obj);
         return obj;
     }
 
@@ -400,7 +394,7 @@ public static class VersionPath
     public static ForgeInstallObj? GetNeoForgeInstallObj(string mc, string version)
     {
         var key = $"{mc}-{version}";
-        if (s_neoForgeInstalls.TryGetValue(key, out var temp))
+        if (Current.NeoForgeInstalls.TryGetValue(key, out var temp))
         {
             return temp;
         }
@@ -421,7 +415,7 @@ public static class VersionPath
         {
             return null;
         }
-        s_neoForgeInstalls.Add(key, obj);
+        Current.NeoForgeInstalls.Add(key, obj);
         return obj;
     }
 
@@ -444,7 +438,7 @@ public static class VersionPath
     public static ForgeLaunchObj? GetNeoForgeObj(string mc, string version)
     {
         var key = $"{mc}-{version}";
-        if (s_neoForgeLaunchs.TryGetValue(key, out var temp))
+        if (Current.NeoForgeLaunches.TryGetValue(key, out var temp))
         {
             return temp;
         }
@@ -464,7 +458,7 @@ public static class VersionPath
         {
             return null;
         }
-        s_neoForgeLaunchs.Add(key, obj);
+        Current.NeoForgeLaunches.Add(key, obj);
         return obj;
     }
 
@@ -478,7 +472,7 @@ public static class VersionPath
     {
         var key = $"{mc}-{version}";
         string file = Path.Combine(ForgeDir, $"forge-{mc}-{version}-install.json");
-        if (s_neoForgeInstalls.TryGetValue(key, out var temp))
+        if (Current.NeoForgeInstalls.TryGetValue(key, out var temp))
         {
             return temp;
         }
@@ -494,7 +488,7 @@ public static class VersionPath
         {
             return null;
         }
-        s_neoForgeInstalls.Add(key, obj);
+        Current.NeoForgeInstalls.Add(key, obj);
         return obj;
     }
 
@@ -517,7 +511,7 @@ public static class VersionPath
     public static ForgeLaunchObj? GetForgeObj(string mc, string version)
     {
         var key = $"{mc}-{version}";
-        if (s_forgeLaunchs.TryGetValue(key, out var temp))
+        if (Current.ForgeLaunches.TryGetValue(key, out var temp))
         {
             return temp;
         }
@@ -534,7 +528,7 @@ public static class VersionPath
         {
             return null;
         }
-        s_forgeLaunchs.Add(key, obj);
+        Current.ForgeLaunches.Add(key, obj);
         return obj;
     }
 
@@ -557,7 +551,7 @@ public static class VersionPath
     public static FabricLoaderObj? GetFabricObj(string mc, string version)
     {
         var key = $"{mc}-{version}";
-        if (s_fabricLoaders.TryGetValue(key, out var temp))
+        if (Current.FabricLoaders.TryGetValue(key, out var temp))
         {
             return temp;
         }
@@ -574,7 +568,7 @@ public static class VersionPath
         {
             return null;
         }
-        s_fabricLoaders.Add(key, obj);
+        Current.FabricLoaders.Add(key, obj);
         return obj;
     }
 
@@ -597,7 +591,7 @@ public static class VersionPath
     public static QuiltLoaderObj? GetQuiltObj(string mc, string version)
     {
         var key = $"{mc}-{version}";
-        if (s_quiltLoaders.TryGetValue(key, out var temp))
+        if (Current.QuiltLoaders.TryGetValue(key, out var temp))
         {
             return temp;
         }
@@ -614,7 +608,7 @@ public static class VersionPath
         {
             return null;
         }
-        s_quiltLoaders.Add(key, obj);
+        Current.QuiltLoaders.Add(key, obj);
         return obj;
     }
 
@@ -625,7 +619,7 @@ public static class VersionPath
     /// <returns></returns>
     public static CustomLoaderObj? GetCustomLoaderObj(this GameSettingObj obj)
     {
-        if (s_customLoader.TryGetValue(obj.UUID, out var temp))
+        if (Current.CustomLoaders.TryGetValue(obj.UUID, out var temp))
         {
             return temp;
         }
@@ -640,7 +634,7 @@ public static class VersionPath
     /// <returns></returns>
     public static OptifineObj? GetOptifine(string version)
     {
-        if (s_optifineLoader.TryGetValue(version, out var temp))
+        if (Current.OptifineLoaders.TryGetValue(version, out var temp))
         {
             return temp;
         }
