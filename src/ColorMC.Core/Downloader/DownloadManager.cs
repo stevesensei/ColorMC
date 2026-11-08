@@ -10,6 +10,10 @@ namespace ColorMC.Core.Downloader;
 /// </summary>
 public static class DownloadManager
 {
+    /// <summary>嵌入方可为所有文件下载提供共享并发配额。</summary>
+    public static Func<CancellationToken, ValueTask<IDisposable>>? AcquireDownloadSlot { get; set; }
+    /// <summary>嵌入方可按已读取字节实施全局带宽限制。</summary>
+    public static Func<int, CancellationToken, ValueTask>? ThrottleDownload { get; set; }
     /// <summary>
     /// 下载状态
     /// </summary>
@@ -158,6 +162,13 @@ public static class DownloadManager
     private static Task<bool> StartAsync(ICollection<FileItemObj> list, IDownloadGui? gui,
         IProgressGui? pgui, CancellationToken token)
     {
+        // 只在空闲时替换线程，已开始的文件继续使用旧配额，避免设置变更取消任务。
+        if (!State && s_threads.Count != ConfigLoad.Config.Http.DownloadThread)
+        {
+            foreach (var worker in s_threads) worker.Close();
+            s_threads.Clear();
+            InitThread();
+        }
         var task = new DownloadTask(gui, pgui, token);
         s_tasks.Add(task);
 

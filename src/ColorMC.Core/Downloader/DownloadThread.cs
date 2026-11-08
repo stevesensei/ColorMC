@@ -83,6 +83,8 @@ internal class DownloadThread
     {
         _index = index;
         _run = true;
+        // 创建后可能立即分派任务，提前允许 Start 发出信号，避免线程尚未进入 Run 时丢失唤醒。
+        _isWait = true;
         _thread = new Thread(() =>
         {
             while (_run)
@@ -227,6 +229,7 @@ internal class DownloadThread
         //写文件
         while ((bytesRead = stream1.ReadAsync(buffer, item.Task.Token).AsTask().Result) != 0)
         {
+            DownloadManager.ThrottleDownload?.Invoke(bytesRead, item.Task.Token).AsTask().GetAwaiter().GetResult();
             stream.WriteAsync(buffer, 0, bytesRead, item.Task.Token).Wait();
 
             CheckPause(item);
@@ -384,6 +387,7 @@ internal class DownloadThread
                     }
 
                     //网络请求
+                    using var slot = DownloadManager.AcquireDownloadSlot?.Invoke(item.Task.Token).AsTask().GetAwaiter().GetResult();
                     HttpResponseMessage data;
                     if (useBreak && serverRanges)
                     {
