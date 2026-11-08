@@ -31,6 +31,11 @@ public static class AuthDatabase
     /// </summary>
     public static void Init()
     {
+        if (ColorMCCore.CoreArg?.UseAuthDatabase == false)
+        {
+            lock (s_auths) s_auths.Clear();
+            return;
+        }
         s_local = Path.Combine(InnerPath.Inner, Names.NameAuthFile);
 
         if (File.Exists(s_local))
@@ -73,6 +78,7 @@ public static class AuthDatabase
     /// </summary>
     public static void Save()
     {
+        if (ColorMCCore.CoreArg?.UseAuthDatabase == false) return;
         ConfigSave.AddItem(ConfigSaveObj.Build(Names.NameAuthFile, s_local,
             [.. s_auths.Values], JsonType.ListLoginObj));
     }
@@ -83,6 +89,7 @@ public static class AuthDatabase
     /// <param name="obj">保存的账户</param>
     public static void Save(this LoginObj obj)
     {
+        if (ColorMCCore.CoreArg?.UseAuthDatabase == false) return;
         if (string.IsNullOrWhiteSpace(obj.UUID))
         {
             return;

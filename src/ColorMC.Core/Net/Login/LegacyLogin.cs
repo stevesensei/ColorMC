@@ -183,6 +183,9 @@ public static class LegacyLogin
             MediaTypeHeaderValue.Parse("application/json"));
         }
         using var res = await CoreHttpClient.SendLoginAsync(message, token);
+        // refresh 明确拒绝令牌时，调用方应提示重新登录，而不是继续重试旧会话。
+        if (res.StatusCode == HttpStatusCode.Forbidden)
+            throw new LoginException(LoginFailState.LoginTokenTimeout, AuthState.Token);
         using var data = await res.Content.ReadAsStreamAsync(token);
         var obj2 = JsonUtils.ToObj(data, JsonType.AuthenticateResObj);
         if (obj2 == null)

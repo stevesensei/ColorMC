@@ -57,11 +57,8 @@ public static class AuthlibInjector
     /// <param name="obj">保存的账户</param>
     public static async Task<LoginObj> RefreshAsync(LoginObj obj, CancellationToken token)
     {
-        if (await LegacyLogin.ValidateAsync(obj.Text1, obj, token))
-        {
-            return await LegacyLogin.RefreshAsync(obj.Text1, obj, false, token);
-        }
-
-        throw new LoginException(LoginFailState.LoginTokenTimeout, AuthState.Token);
+        // 暂时失效的令牌会被 validate 拒绝，但按 Yggdrasil 规范仍允许 refresh。
+        // 直接刷新，由服务器决定令牌是否已彻底失效，不能用 validate 作为刷新前置条件。
+        return await LegacyLogin.RefreshAsync(obj.Text1, obj, false, token);
     }
 }

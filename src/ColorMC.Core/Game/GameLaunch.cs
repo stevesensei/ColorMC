@@ -30,7 +30,8 @@ public static class Launch
         //刷新账户token
         try
         {
-            var res1 = await larg.Auth.RefreshTokenAsync(token);
+            token.ThrowIfCancellationRequested();
+            var res1 = larg.AuthAlreadyRefreshed ? larg.Auth : await larg.Auth.RefreshTokenAsync(token);
             res1.LastLogin = DateTime.Now;
             larg.Auth = res1;
             larg.Auth.Save();

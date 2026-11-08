@@ -13,6 +13,8 @@ public record GameLaunchArg
     /// 登录账户
     /// </summary>
     public required LoginObj Auth;
+    /// <summary>调用方已为本次启动完成认证并保存结果时，复用该会话，不再次刷新令牌。默认仍由核心认证。</summary>
+    public bool AuthAlreadyRefreshed;
     /// <summary>
     /// 自动进入的世界
     /// </summary>

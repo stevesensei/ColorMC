@@ -161,7 +161,7 @@ public static class JvmPath
         else
         {
             //选择jdk的java
-            if (java.Contains("jre"))
+            if (java.Contains("jdk"))
             {
                 var info = new FileInfo(java);
                 var tpath = Path.Combine(info.Directory!.Parent!.Parent!.FullName, "bin", info.Name);
@@ -190,7 +190,7 @@ public static class JvmPath
         var basedir = ColorMCCore.BaseDir;
         if (local.StartsWith(basedir))
         {
-            local = local[basedir.Length..];
+            local = local[(1+basedir.Length)..];
         }
 
         //删除旧的
@@ -198,7 +198,8 @@ public static class JvmPath
         var path = local;
         if (path.StartsWith(Names.NameJavaDir))
         {
-            path = Path.GetFullPath(basedir + path);
+            //TODO:Windows only
+            path = Path.GetFullPath(basedir + '/' + path);
         }
 
         var info = JavaHelper.GetJavaInfo(path);
